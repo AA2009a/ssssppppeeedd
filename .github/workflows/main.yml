@@ -1,4 +1,4 @@
-name: Smart RDP with Tailscale
+name: HAIDER RDP with Tailscale + Auto Test
 on:
   workflow_dispatch:
 
@@ -9,16 +9,13 @@ jobs:
     steps:
       - name: Configure Core RDP Settings
         run: |
-          # تفعيل RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          # SecurityLayer = 1 لضمان توافق مع ويندوز الحديثة
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 1 -Force
-          # إعداد Firewall
           netsh advfirewall firewall delete rule name="RDP-Tailscale" -ErrorAction SilentlyContinue
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-          # إعادة تشغيل خدمة RDP
           Restart-Service -Name TermService -Force
+          Start-Sleep -Seconds 5
 
       - name: Create RDP User
         run: |
@@ -42,12 +39,13 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=tskey-auth-kAAQkEeh5A21CNTRL-2uW6mY3PnAGLidWGDncWAGNVxhGywXs3 --hostname="gh-runner-$env:GITHUB_RUN_ID"
+          Start-Process "$env:ProgramFiles\Tailscale\tailscale.exe" -ArgumentList "up --authkey=tskey-auth-kAAQkEeh5A21CNTRL-2uW6mY3PnAGLidWGDncWAGNVxhGywXs3 --hostname=gh-runner-$env:GITHUB_RUN_ID" -Wait
           $tsIP = $null
           $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4) -join ""
+          while (-not $tsIP -and $retries -lt 12) {
               Start-Sleep -Seconds 5
+              $allIPs = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              $tsIP = $allIPs | Where-Object { $_ -match '^100\.' } | Select-Object -First 1
               $retries++
           }
           if (-not $tsIP) {
@@ -56,21 +54,29 @@ jobs:
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Verify RDP Accessibility
+      - name: Test RDP Connection
         run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
+          $success = $false
+          for ($i=0; $i -lt 6; $i++) {
+              Write-Host "Testing TCP connection to RDP port 3389..."
+              $result = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+              if ($result.TcpTestSucceeded) {
+                  $success = $true
+                  break
+              }
+              Start-Sleep -Seconds 5
+          }
+          if (-not $success) {
+              Write-Error "❌ TCP connection to RDP port 3389 failed after retries."
               exit 1
           }
-          Write-Host "✅ TCP connectivity successful!"
+          Write-Host "✅ RDP TCP connection successful!"
 
       - name: Notify via Telegram
         run: |
           $botToken = "7411970363:AAEY9p2pwXgsBZSHAdhc0uV-I2geQM-Umvc"
           $chatId   = "5258815908"
-          $message  = "✅ RDP Ready!`nAddress: $env:TAILSCALE_IP`nUsername: HAIDER`nPassword: admin@123"
+          $message  = "✅ RDP Ready and Verified!`nAddress: $env:TAILSCALE_IP`nUsername: HAIDER`nPassword: admin@123"
 
           Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/sendMessage" `
                             -Method Post `
