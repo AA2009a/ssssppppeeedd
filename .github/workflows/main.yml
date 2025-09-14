@@ -37,7 +37,6 @@ jobs:
 
       - name: Install Developer Tools with Chocolatey
         run: |
-          # تثبيت Git, VS Code, Python, Node.js LTS, .NET SDK
           choco install git -y
           choco install vscode -y
           choco install python --version=3.12.0 -y
@@ -46,7 +45,7 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gh-runner-$env:GITHUB_RUN_ID"
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=tskey-auth-kAAQkEeh5A21CNTRL-2uW6mY3PnAGLidWGDncWAGNVxhGywXs3 --hostname="gh-runner-$env:GITHUB_RUN_ID"
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
@@ -72,7 +71,10 @@ jobs:
 
       - name: Notify via Telegram
         run: |
-          $botToken = "${{ secrets.TELEGRAM_BOT_TOKEN }}"
-          $chatId = "${{ secrets.TELEGRAM_CHAT_ID }}"
-          $message = "✅ RDP Ready!" + "`nAddress: $env:TAILSCALE_IP`nUsername: HAIDER`nPassword: admin@123"
-          Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/sendMessage" -Method Post -Body @{ chat_id = $chatId; text = $message }
+          $botToken = "7411970363:AAEY9p2pwXgsBZSHAdhc0uV-I2geQM-Umvc"
+          $chatId   = "5258815908"
+          $message  = "✅ RDP Ready!`nAddress: $env:TAILSCALE_IP`nUsername: HAIDER`nPassword: admin@123"
+
+          Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/sendMessage" `
+                            -Method Post `
+                            -Body @{ chat_id = $chatId; text = $message }
