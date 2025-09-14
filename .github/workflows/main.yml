@@ -1,0 +1,43 @@
+herename: Deploy to Windows VPS (WinRM)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run PowerShell script on Windows VPS via WinRM
+        uses: microsoft-devlabs/powershell-winrm-action@v1.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 5986 }}
+          script: |
+            Write-Host "🚀 Running deployment script on Windows VPS..."
+
+            # إنشاء مستخدم جديد RDP
+            $password = ConvertTo-SecureString "MyStrongPass123!" -AsPlainText -Force
+            if (-not (Get-LocalUser -Name "toolbox" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "toolbox" -Password $password -AccountNeverExpires
+              Add-LocalGroupMember -Group "Administrators" -Member "toolbox"
+              Add-LocalGroupMember -Group "Remote Desktop Users" -Member "toolbox"
+              Write-Host "✅ User toolbox created and added to RDP/Administrators."
+            }
+
+            # تثبيت برامج أساسية (مثال)
+            Write-Host "📦 Installing tools..."
+            choco install -y git
+            choco install -y googlechrome
+            choco install -y vscode
+            choco install -y python
+            choco install -y nodejs-lts
+
+            Write-Host "✅ Deployment finished successfully."
