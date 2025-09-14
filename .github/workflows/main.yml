@@ -35,13 +35,14 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
-      - name: Install Developer Tools
+      - name: Install Developer Tools with Chocolatey
         run: |
-          winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
-          winget install --id Microsoft.VisualStudioCode -e --source winget --accept-source-agreements --accept-package-agreements
-          winget install --id Python.Python.3.12 -e --source winget --accept-source-agreements --accept-package-agreements
-          winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
-          winget install --id Microsoft.DotNet.SDK.8 -e --source winget --accept-source-agreements --accept-package-agreements
+          # تثبيت Git, VS Code, Python, Node.js LTS, .NET SDK
+          choco install git -y
+          choco install vscode -y
+          choco install python --version=3.12.0 -y
+          choco install nodejs-lts -y
+          choco install dotnet-8.0-sdk -y
 
       - name: Establish Tailscale Connection
         run: |
