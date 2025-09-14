@@ -9,11 +9,15 @@ jobs:
     steps:
       - name: Configure Core RDP Settings
         run: |
+          # تفعيل RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          # SecurityLayer = 1 لضمان توافق مع ويندوز الحديثة
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 1 -Force
+          # إعداد Firewall
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" -ErrorAction SilentlyContinue
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          # إعادة تشغيل خدمة RDP
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User
@@ -21,10 +25,11 @@ jobs:
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           if (-not (Get-LocalUser -Name "HAIDER" -ErrorAction SilentlyContinue)) {
-              New-LocalUser -Name "HAIDER" -Password $securePass -AccountNeverExpires
+              New-LocalUser -Name "HAIDER" -Password $securePass -AccountNeverExpires -UserMayNotChangePassword:$false
               Add-LocalGroupMember -Group "Administrators" -Member "HAIDER"
               Add-LocalGroupMember -Group "Remote Desktop Users" -Member "HAIDER"
           }
+          Enable-LocalUser -Name "HAIDER"
           echo "RDP_CREDS=User: HAIDER | Password: $password" >> $env:GITHUB_ENV
 
       - name: Install Tailscale
@@ -34,14 +39,6 @@ jobs:
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
-
-      - name: Install Developer Tools with Chocolatey
-        run: |
-          choco install git -y
-          choco install vscode -y
-          choco install python --version=3.12.0 -y
-          choco install nodejs-lts -y
-          choco install dotnet-8.0-sdk -y
 
       - name: Establish Tailscale Connection
         run: |
@@ -67,7 +64,7 @@ jobs:
               Write-Error "TCP connection to RDP port 3389 failed"
               exit 1
           }
-          Write-Host "TCP connectivity successful!"
+          Write-Host "✅ TCP connectivity successful!"
 
       - name: Notify via Telegram
         run: |
