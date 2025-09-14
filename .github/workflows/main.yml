@@ -1,10 +1,11 @@
-name: RDP
+name: Smart RDP with Tailscale
 on:
   workflow_dispatch:
+
 jobs:
   secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 3600
+    timeout-minutes: 60
     steps:
       - name: Configure Core RDP Settings
         run: |
@@ -15,58 +16,40 @@ jobs:
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Static Password
+      - name: Create RDP User
         run: |
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-
           if (-not (Get-LocalUser -Name "HAIDER" -ErrorAction SilentlyContinue)) {
               New-LocalUser -Name "HAIDER" -Password $securePass -AccountNeverExpires
+              Add-LocalGroupMember -Group "Administrators" -Member "HAIDER"
+              Add-LocalGroupMember -Group "Remote Desktop Users" -Member "HAIDER"
           }
-
-          Add-LocalGroupMember -Group "Administrators" -Member "HAIDER"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "HAIDER"
-
           echo "RDP_CREDS=User: HAIDER | Password: $password" >> $env:GITHUB_ENV
-
-          if (-not (Get-LocalUser -Name "HAIDER")) {
-              Write-Error "User creation failed"
-              exit 1
-          }
 
       - name: Install Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
-
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
       - name: Install Developer Tools
         run: |
-          # Git
-          winget install --id Git.Git -e --source winget
-          
-          # Visual Studio Code
-          winget install --id Microsoft.VisualStudioCode -e --source winget
-          
-          # Python 3
-          winget install --id Python.Python.3.12 -e --source winget
-          
-          # Node.js LTS
-          winget install --id OpenJS.NodeJS.LTS -e --source winget
-          
-          # .NET SDK
-          winget install --id Microsoft.DotNet.SDK.8 -e --source winget
+          winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
+          winget install --id Microsoft.VisualStudioCode -e --source winget --accept-source-agreements --accept-package-agreements
+          winget install --id Python.Python.3.12 -e --source winget --accept-source-agreements --accept-package-agreements
+          winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
+          winget install --id Microsoft.DotNet.SDK.8 -e --source winget --accept-source-agreements --accept-package-agreements
 
       - name: Establish Tailscale Connection
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gh-runner-$env:GITHUB_RUN_ID"
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4) -join ""
               Start-Sleep -Seconds 5
               $retries++
           }
@@ -86,14 +69,9 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
-      - name: Maintain Connection
+      - name: Notify via Telegram
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: HAIDER"
-          Write-Host "Password: admin@123"
-          Write-Host "==================`n"
-          while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
-          }
+          $botToken = "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          $chatId = "${{ secrets.TELEGRAM_CHAT_ID }}"
+          $message = "✅ RDP Ready!" + "`nAddress: $env:TAILSCALE_IP`nUsername: HAIDER`nPassword: admin@123"
+          Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/sendMessage" -Method Post -Body @{ chat_id = $chatId; text = $message }
